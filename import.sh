@@ -11,19 +11,24 @@ set -e
 #
 # upstream_repo
 #   a repo that contains the commits to be merged and can be 'git clone'ed
-# upstream_commit
-#   commit id of the point in time to merge from the upstream repo
+# upstream_branch
+#   branch name to merge from the upstream repo
 # dst_repo
 #   local destination repo/directory where to merge into
 # dst_branch
-#   local branch/commit point to make proposal to
+#   local branch to make proposal on
 #
 # Pulls/merges upstream commits into local percona server repo
-# Results in a new branch named ${dst_branch}-merge that contains the contents
-# of the original dst_branch plus the merged upstream changes.
+# Results in a new branch named merge_${upstream_branch}_to_${dst_branch} that
+# contains the contents of the original dst_branch plus the merged upstream
+# changes.
 #
-# If there are conflicts, the ${dst_branch}_merge baranch will be left in an
-# uncommitted state for manual resolution.
+# If there are conflicts, the merge_${upstream_branch}_to_${dst_branch} branch
+# will be left in an uncommitted state for manual resolution.
+#
+# Since this script assumes only certain specific directories within the repo
+# are rocksdb/myrocks, repo changes must be monitored closely so the script can
+# be updated to include any new/renamed source
 
 usage() {
     echo "$@"
@@ -31,8 +36,19 @@ usage() {
     echo "     $0 upstream_repo upstream_commit dst_repo dst_branch"
 }
 
+NOTES=""
+addnote() {
+    echo $@
+    NOTES="${NOTES}\n$@"
+}
+printnotes() {
+    echo -e "\n\n*************** NOTES *******************"
+    echo -e ${NOTES}
+}
+trap printnotes exit
+
 UPSTREAM_REPO=$1
-UPSTREAM_COMMIT=$2
+UPSTREAM_BRANCH=$2
 DST_REPO=$3
 DST_BRANCH=$4
 WORKSPACE=${PWD}
@@ -41,7 +57,7 @@ if [ -z "${UPSTREAM_REPO}" ]; then
     usage "Error : No upstream_repo specified"
     exit 1
 fi
-if [ -z "${UPSTREAM_COMMIT}" ]; then
+if [ -z "${UPSTREAM_BRANCH}" ]; then
     usage "Error : No upstream_commit specified"
     exit 1
 fi
@@ -55,13 +71,14 @@ if [ -z "${DST_BRANCH}" ]; then
 fi
 
 # first clone the upstream to a local repo
-UPSTREAM_SRC=upstream
-git clone --recursive ${UPSTREAM_REPO} ${UPSTREAM_SRC}
+UPSTREAM_CLONE=upstream-clone
+UPSTREAM_WORKING=upstream-working
+git clone --branch ${UPSTREAM_BRANCH} ${UPSTREAM_REPO} ${UPSTREAM_CLONE}
 # we need to harvest the rocksdb commit pointer for later to manipulate it
 # correctly in the final merge branch because the git filter-branch doesn't work
 # with submodules.
-cd ${UPSTREAM_SRC}
-git remote rm origin
+cd ${UPSTREAM_CLONE}
+git remote remove origin
 ROCKSDB_SUBMODULE_COMMIT=`git submodule status rocksdb`
 ROCKSDB_SUBMODULE_COMMIT=${ROCKSDB_SUBMODULE_COMMIT:1:40}
 if [ -z "${ROCKSDB_SUBMODULE_COMMIT}" ]; then
@@ -70,47 +87,80 @@ if [ -z "${ROCKSDB_SUBMODULE_COMMIT}" ]; then
 fi
 cd ..
 
+# lets note the submodule commit id for ease of manually finishing the process
+# in case of an early exit
+addnote "ROCKSDB_SUBMODULE_COMMIT is ${ROCKSDB_SUBMODULE_COMMIT}"
+
 # set up an empty staging repo
-STAGE_SRC=stage
-rm -rf ${STAGE_SRC}
-mkdir ${STAGE_SRC}
-cd ${STAGE_SRC}
+STAGING=staging
+rm -rf ${STAGING}
+mkdir ${STAGING}
+cd ${STAGING}
 git init
-git remote add upstream ../${UPSTREAM_SRC}
 cd ..
 
-# strip all non myrocks files and stage the results in the staging repo
+# this loop is the real meat of the process, it strips all of the non myrocks
+# files and directories out, restructures the files and directories, then pulls
+# the result into a staging repo that contains only the myrocks files in the
+# structure that we want.
 SRC_DIRS=( "storage/rocksdb" "mysql-test/suite/rocksdb" "mysql-test/suite/rocksdb_rpl" "mysql-test/suite/rocksdb_stress" "mysql-test/suite/rocksdb_sys_vars" )
 DST_DIRS=( "storage/myrocks" "mysql-test/suite/myrocks" "mysql-test/suite/myrocks.rpl" "mysql-test/suite/myrrocks.stress" "mysql-test/suite/myrocks.sys_vars" )
 array_size=$(( ${#SRC_DIRS[@]} ))
 array_top=$(( ${array_size}-1 ))
 
 for i in `seq 0 ${array_top}`; do
-    cd ${UPSTREAM_SRC}
     BRANCH=${DST_DIRS[$i]} # use the internal location as the branch name
     SRC_DIR=${SRC_DIRS[$i]}
     DST_DIR=${DST_DIRS[$i]}
-    echo "Processing merge of ${SRC_DIR} to ${DST_DIR}"
-    git checkout -b ${BRANCH} ${UPSTREAM_COMMIT}
+    addnote "Processing merge of ${SRC_DIR} to ${DST_DIR}"
+    # if directory doesn't exist in the upstream-lone, skip it as it might not
+    # have existed in that version
+    if [ ! -e "${UPSTREAM_CLONE}/${SRC_DIR}" ]; then
+        addnote "Processing merge of ${SRC_DIR} to ${DST_DIR} : ${UPSTREAM_CLONE}/${SRC_DIR} WAS NOT FOUND!!! SKIPPING"
+        continue
+    fi
+    git clone --branch ${UPSTREAM_BRANCH} ${UPSTREAM_CLONE} ${UPSTREAM_WORKING}
+    addnote "Processing merge of ${SRC_DIR} to ${DST_DIR} 2"
+    cd ${UPSTREAM_WORKING}
+    git checkout -b ${BRANCH} ${UPSTREAM_BRANCH}
+    addnote "Processing merge of ${SRC_DIR} to ${DST_DIR} 3"
     git filter-branch -f --subdirectory-filter ${SRC_DIR} -- --all
+    addnote "Processing merge of ${SRC_DIR} to ${DST_DIR} 4"
     DST_DIR=${DST_DIR} git filter-branch -f --prune-empty --tree-filter 'if [ ! -e ${DST_DIR} ]; then mkdir -p ${DST_DIR}; git ls-tree --name-only $GIT_COMMIT | xargs -I files mv files ${DST_DIR}; fi'
-    cd ../${STAGE_SRC}
+    addnote "Processing merge of ${SRC_DIR} to ${DST_DIR} 5"
+    cd ../${STAGING}
+    git remote add upstream ../${UPSTREAM_WORKING}
+    addnote "Processing merge of ${SRC_DIR} to ${DST_DIR} 6"
     git pull --no-edit upstream ${BRANCH}
+    addnote "Processing merge of ${SRC_DIR} to ${DST_DIR} 7"
+    git remote remove upstream
     cd ..
+    rm -rf ${UPSTREAM_WORKING}
+    addnote "Processing merge of ${SRC_DIR} to ${DST_DIR} 8"
 done
+
+# at this point, we could stop the automated process and do the rest manually
+# but I let the script continue to illustrate what should be done
 
 # pull the staging repo into the destination branch
 cd ${DST_REPO}
-git checkout -b ${DST_BRANCH}-merge ${DST_BRANCH}
-git remote add stage ../stage
-git pull --no-edit stage master
-git remote remove stage
+addnote "Results will be in branch merge_${UPSTREAM_BRANCH}_to_${DST_BRANCH}"
+git checkout -b merge_${UPSTREAM_BRANCH}_to_${DST_BRANCH} ${DST_BRANCH}
+git remote add staging ../staging
+
+# if there are conflicts, this should halt the script for manual intervention
+git pull --no-edit staging master
+
+git remote remove staging
+
 # add the submodule commit pointer if there is no submodule,
 # else just update it
 cd storage/myrocks
-if [ ! -d rocksdb ]; then
-    git submodule add https://github.com/facebook/rocksdb.git
+if [ ! -e rocksdb ]; then
+    git submodule add -f https://github.com/facebook/rocksdb.git
 fi
+git submodule init
+git submodule update
 cd rocksdb
 git checkout ${ROCKSDB_SUBMODULE_COMMIT}
 cd ../../..
@@ -120,5 +170,6 @@ git commit -m "Update of storage/myrocks/rocksdb submodule commit pointer to ${R
 cd ..
 
 # leave it behind for not for troubleshooting
-#rm -rf ${STAGE}
-#rm -rf ${UPSTREAM_SRC}
+#rm -rf ${STAGING}
+#rm -rf ${UPSTREAM_CLONE}
+#rm -rf ${UPSTREAM_WORKING}
