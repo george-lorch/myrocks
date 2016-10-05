@@ -37,12 +37,14 @@ usage() {
 }
 
 NOTES=""
+CLEAN_EXIT="There were errors!!!"
 addnote() {
     echo $@
     NOTES="${NOTES}\n$@"
 }
 printnotes() {
     echo -e "\n\n*************** NOTES *******************"
+    echo -e ${CLEAN_EXIT}
     echo -e ${NOTES}
 }
 trap printnotes exit
@@ -104,7 +106,7 @@ cd ..
 # the result into a staging repo that contains only the myrocks files in the
 # structure that we want.
 SRC_DIRS=( "storage/rocksdb" "mysql-test/suite/rocksdb" "mysql-test/suite/rocksdb_rpl" "mysql-test/suite/rocksdb_stress" "mysql-test/suite/rocksdb_sys_vars" )
-DST_DIRS=( "storage/myrocks" "mysql-test/suite/myrocks" "mysql-test/suite/myrocks.rpl" "mysql-test/suite/myrrocks.stress" "mysql-test/suite/myrocks.sys_vars" )
+DST_DIRS=( "storage/rocksdb" "mysql-test/suite/rocksdb" "mysql-test/suite/rocksdb.rpl" "mysql-test/suite/rocksdb.stress" "mysql-test/suite/rocksdb.sys_vars" )
 array_size=$(( ${#SRC_DIRS[@]} ))
 array_top=$(( ${array_size}-1 ))
 
@@ -155,7 +157,7 @@ git remote remove staging
 
 # add the submodule commit pointer if there is no submodule,
 # else just update it
-cd storage/myrocks
+cd storage/rocksdb
 if [ ! -e rocksdb ]; then
     git submodule add -f https://github.com/facebook/rocksdb.git
 fi
@@ -169,6 +171,7 @@ git commit -m "Update of storage/myrocks/rocksdb submodule commit pointer to ${R
 
 cd ..
 
+CLEAN_EXIT="Completed successfully!!!"
 # leave it behind for not for troubleshooting
 #rm -rf ${STAGING}
 #rm -rf ${UPSTREAM_CLONE}
