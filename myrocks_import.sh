@@ -141,6 +141,10 @@ for i in `seq 0 ${array_top}`; do
     addnote "Processing merge of ${SRC_DIR} to ${DST_DIR} 8"
 done
 
+#need to grab mysqldump.c
+#git filter-branch -f --subdirectory-filter client -- --all
+#DST_DIR=client git filter-branch -f --prune-empty --tree-filter 'if [ ! -e ${DST_DIR} ]; then mkdir -p ${DST_DIR}; git ls-tree --name-only $GIT_COMMIT | xargs -I files mv files ${DST_DIR}; find ${DST_DIR} -type f -not -name mysqldump.c -delete; fi'
+
 # at this point, we could stop the automated process and do the rest manually
 # but I let the script continue to illustrate what should be done
 
