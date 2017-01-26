@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ccp a.k.a. clear current patch
+# clear patch
 # 'clears' the current patch to not it as being observed or applied.
 # In other words, just renames the 'current' active (highest ordinal)
 # <ordinal>.<commit>.patch to <ordinal>.<commit>.patch.clear

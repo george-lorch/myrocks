@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# vnp a.k.a. vim next patch
-# finds the next unapplied/observed patch in the sequence and launches vim on it
+# check patch
+# finds the next unapplied/observed patch in the sequence and does a
+# git apply --check <patch>
 
 
 _where=$1
@@ -13,4 +14,4 @@ fi
 
 _file=`find $_where -name "*.patch" | sort | tail -1`
 
-vim $_file
+git apply --check $_file
