@@ -15,3 +15,6 @@ fi
 _file=`find $_where -name "*.patch" | sort | tail -1`
 
 git am $_file
+if [ $? -eq 0 ]; then
+    git log -n 1 --format=oneline
+fi

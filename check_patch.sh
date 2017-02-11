@@ -8,8 +8,7 @@ function check_string()
 {
     grep -n "$2" $1
     if [ $? -eq 0 ]; then
-        echo "Found bad string match for $2"
-        exit 1
+        echo "WARNING: Found bad string match for $2"
     fi
 }
 
@@ -26,5 +25,10 @@ check_string $_file "have_rocksdb.inc"
 check_string $_file "mysql-test/suite/rocksdb_"
 check_string $_file " a/rocksdb"
 check_string $_file " b/rocksdb"
+check_string $_file " include/ut0counter"
 check_string $_file "mysqld--help"
+check_string $_file "thd_thread_id"
+check_string $_file "/trx_info"
+check_string $_file "/lock_info"
+check_string $_file "restart_mysqld_with_option"
 git apply --check $@ $_file

@@ -21,3 +21,5 @@ if [ -z "$1" ]; then
 else
     mv $_file $_file.$1
 fi
+
+echo "Next patch is `find $_where -name "*.patch" | sort | tail -1`"
