@@ -44,15 +44,15 @@ while read line; do
     commit_title=${line:67}
 #    echo "[${commit_id}] [${commit_date}] [${commit_title}]"
     if [ -n "${git_since}" ]; then
-        result=`git log --fixed-strings --grep="${commit_title}"`
+        result=`git log --fixed-strings --grep="${commit_id}"`
     else
-        result=`git log --fixed-strings --grep="${commit_title}" --since="${git_since}"`
+        result=`git log --fixed-strings --grep="${commit_id}" --since="${git_since}"`
     fi
     if [ ${#result} -lt 2 ]; then
         if [ -n "${git_since}" ]; then
-            result=`git log --fixed-strings --grep="${commit_id}"`
+            result=`git log --fixed-strings --grep="${commit_title}"`
         else
-            result=`git log --fixed-strings --grep="${commit_id}" --since="${git_since}"`
+            result=`git log --fixed-strings --grep="${commit_title}" --since="${git_since}"`
         fi
         if [ ${#result} -lt 2 ]; then
             echo "${commit_id} ${commit_date} \"${commit_title}\""
